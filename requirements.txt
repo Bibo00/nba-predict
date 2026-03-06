@@ -1,0 +1,7 @@
+streamlit
+pandas
+nba_api
+beautifulsoup4
+selenium
+webdriver-manager
+requests
