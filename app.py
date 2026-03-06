@@ -129,13 +129,15 @@ def fetch_dunksandthrees_def(injured_players, opp_abb):
     options = Options()
     options.add_argument("--headless")
     options.add_argument("--window-size=1920,1080")
-    
-    # --- RIGHE AGGIUNTE PER IL SERVER CLOUD ---
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
-    # ------------------------------------------
+    options.add_argument("--disable-gpu")
     
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    # --- LA MODIFICA È QUI ---
+    options.binary_location = "/usr/bin/chromium"
+    service = Service("/usr/bin/chromedriver")
+    driver = webdriver.Chrome(service=service, options=options)
+    # -------------------------
     
     def_dict = {}
     nomi_da_cercare = injured_players.copy()
@@ -222,13 +224,17 @@ def fetch_dvp_rankings(pos):
     url = "https://www.fantasypros.com/daily-fantasy/nba/fanduel-defense-vs-position.php"
     chrome_options = Options()
     chrome_options.add_argument("--headless")
-    
-    # --- RIGHE AGGIUNTE PER IL SERVER CLOUD ---
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    # ------------------------------------------
+    chrome_options.add_argument("--disable-gpu") # Utile sui server senza schermo
     
-    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    # --- LA MODIFICA È QUI ---
+    # Diciamo a Python dove trovare esattamente browser e driver su Streamlit Cloud
+    chrome_options.binary_location = "/usr/bin/chromium"
+    service = Service("/usr/bin/chromedriver")
+    driver = webdriver.Chrome(service=service, options=chrome_options)
+    # -------------------------
+    
     try:
         driver.get(url)
         if pos.upper() != "ALL":
@@ -704,4 +710,5 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         elif voto_finale >= 7.2:
             st.warning(f"⚠️ **GIOCATA MARGINALE (Vantaggio minimo)** {stelle}")
         else:
+
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
