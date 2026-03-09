@@ -196,17 +196,18 @@ def get_espn_starters(team_abb):
 # --- FUNZIONE AGGIORNATA PER LA NUOVA LOGICA INFORTUNI ---
 def evaluate_injury_bonus(infortuni_tua, infortuni_avv, target_pos, current_season, def_data, compagni_da_ignorare=None):
     if compagni_da_ignorare is None: compagni_da_ignorare = []
-    bonus_pra = 0.0
+    bonus_pra_assoluto = 0.0
+    bonus_perc_difesa = 0.0
     
-    # Infortuni di squadra (Bonus Assenza)
+    # Infortuni di squadra (Volume offensivo extra -> Valore Assoluto in PRA)
     for p in infortuni_tua:
         if normalize_name(p) in compagni_da_ignorare: continue
         stats = get_injury_stats(p, current_season)
         if stats and stats['mpg'] >= 20 and stats['ppg'] > 10:
             val = 1.0 if are_positions_similar(target_pos, stats['pos']) else 0.6
-            bonus_pra += val
+            bonus_pra_assoluto += val
             
-    # Infortuni avversari (Bonus Difesa)
+    # Infortuni avversari (Efficienza offensiva extra -> Valore Percentuale)
     for p in infortuni_avv:
         stats = get_injury_stats(p, current_season)
         if stats and stats['mpg'] >= 20:
@@ -215,10 +216,11 @@ def evaluate_injury_bonus(infortuni_tua, infortuni_avv, target_pos, current_seas
             pos_avv = stats['pos'].upper()
             soglia_def = 1.0 if any(r in pos_avv for r in ['PF', 'C']) else 0.5
             if def_stat >= soglia_def:
-                val = 1.0 if are_positions_similar(target_pos, stats['pos']) else 0.6
-                bonus_pra += val
+                # 5% se stesso ruolo, 3% se ruoli diversi
+                val = 0.05 if are_positions_similar(target_pos, stats['pos']) else 0.03
+                bonus_perc_difesa += val
                 
-    return bonus_pra
+    return bonus_pra_assoluto, bonus_perc_difesa
 
 def fetch_dvp_rankings(pos):
     url = "https://www.fantasypros.com/daily-fantasy/nba/fanduel-defense-vs-position.php"
@@ -254,7 +256,7 @@ def calculate_weighted_stat(stat_name, df_f, df_h, df_s, rank_dvp, rientro):
     m_h = df_h[stat_name].mean() if len(df_h) > 0 else m_f
     m_s = df_s[stat_name].mean()
     
-    w_h, w_f, w_s = 0.60, 0.20, 0.20
+    w_h, w_f, w_s = 0.50, 0.25, 0.25
     if len(df_h) < 6:
         w_h, w_f, w_s = w_h - 0.30, w_f + 0.15, w_s + 0.15
     if rientro:
@@ -522,22 +524,14 @@ if menu == "1. 🔍 Analisi Partita":
                         RIENTRO = 10 < giorni_assenza <= 24
                         BACK_TO_BACK = giorni_assenza <= 1
 
-                        # Chiamata alla nuova funzione con le liste flat
-                        bonus_pra = evaluate_injury_bonus(lista_infortunati_squadra, lista_infortunati_avversari, POS, STAGIONE, DEF_DATA, [])
-                        bonus_pra = min(bonus_pra, 3.0)
-
-                        df_dvp = fetch_dvp_rankings(POS)
-                        dvp_row = df_dvp[df_dvp['Team'].str.contains(OPP_FULL, case=False)]
-                        ranks = {
-                            "PTS": dvp_row['PTS_Rank'].values[0] if not dvp_row.empty else 15,
-                            "REB": dvp_row['REB_Rank'].values[0] if not dvp_row.empty else 15,
-                            "AST": dvp_row['AST_Rank'].values[0] if not dvp_row.empty else 15
-                        }
+                        # 1. Chiamata alla funzione: ora riceviamo 2 valori separati!
+                        bonus_assoluto, bonus_perc = evaluate_injury_bonus(lista_infortunati_squadra, lista_infortunati_avversari, POS, STAGIONE, DEF_DATA, [])
                         
-                        res = {}
-                        for stat in ['PTS', 'REB', 'AST']:
-                            res[stat] = calculate_weighted_stat(stat, df_f, df_h, df_s, ranks[stat], RIENTRO)
-                            
+                        # Tappi di sicurezza per evitare proiezioni fuori scala
+                        bonus_assoluto = min(bonus_assoluto, 3.0) # Max 3 PRA dai compagni
+                        bonus_perc = min(bonus_perc, 0.15)        # Max 15% dalle difese bucate
+
+                        # 2. Calcoliamo le medie e i pesi redistributivi
                         media_pts = df_s['PTS'].mean() if not df_s['PTS'].empty else 1.0
                         media_reb = df_s['REB'].mean() if not df_s['REB'].empty else 1.0
                         media_ast = df_s['AST'].mean() if not df_s['AST'].empty else 1.0
@@ -548,7 +542,13 @@ if menu == "1. 🔍 Analisi Partita":
                         else:
                             peso_pts, peso_reb, peso_ast = 0.60, 0.20, 0.20 
 
-                        net_change = bonus_pra - (3.0 if RIENTRO else 0.0) - (1.5 if BACK_TO_BACK else 0.0)
+                        # 3. FUSIONE DEI BONUS: PRA Assoluti + PRA Derivati dalla percentuale difensiva
+                        valore_aggiunto_difesa = media_pra * bonus_perc
+                        bonus_pra_totale = bonus_assoluto + valore_aggiunto_difesa
+
+                        # 4. Applichiamo i malus stanchezza e troviamo il netto da spalmare
+                        net_change = bonus_pra_totale - (3.0 if RIENTRO else 0.0) - (1.5 if BACK_TO_BACK else 0.0)
+                        
                         if net_change != 0:
                             res['PTS'] = max(0.5, res['PTS'] + (net_change * peso_pts))
                             res['REB'] = max(0.5, res['REB'] + (net_change * peso_reb))
@@ -712,3 +712,4 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
