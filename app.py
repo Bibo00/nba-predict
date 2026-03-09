@@ -524,14 +524,26 @@ if menu == "1. 🔍 Analisi Partita":
                         RIENTRO = 10 < giorni_assenza <= 24
                         BACK_TO_BACK = giorni_assenza <= 1
 
-                        # 1. Chiamata alla funzione: ora riceviamo 2 valori separati!
+                        # 1. Chiamata alla nuova funzione Ibrida
                         bonus_assoluto, bonus_perc = evaluate_injury_bonus(lista_infortunati_squadra, lista_infortunati_avversari, POS, STAGIONE, DEF_DATA, [])
-                        
-                        # Tappi di sicurezza per evitare proiezioni fuori scala
                         bonus_assoluto = min(bonus_assoluto, 3.0) # Max 3 PRA dai compagni
                         bonus_perc = min(bonus_perc, 0.15)        # Max 15% dalle difese bucate
 
-                        # 2. Calcoliamo le medie e i pesi redistributivi
+                        # 2. Calcolo dei modificatori Difensivi (DvP)
+                        df_dvp = fetch_dvp_rankings(POS)
+                        dvp_row = df_dvp[df_dvp['Team'].str.contains(OPP_FULL, case=False)]
+                        ranks = {
+                            "PTS": dvp_row['PTS_Rank'].values[0] if not dvp_row.empty else 15,
+                            "REB": dvp_row['REB_Rank'].values[0] if not dvp_row.empty else 15,
+                            "AST": dvp_row['AST_Rank'].values[0] if not dvp_row.empty else 15
+                        }
+                        
+                        # 3. CREAZIONE DEL DIZIONARIO 'res' (Il motore Base)
+                        res = {}
+                        for stat in ['PTS', 'REB', 'AST']:
+                            res[stat] = calculate_weighted_stat(stat, df_f, df_h, df_s, ranks[stat], RIENTRO)
+                            
+                        # 4. Calcolo delle medie per la redistribuzione percentuale
                         media_pts = df_s['PTS'].mean() if not df_s['PTS'].empty else 1.0
                         media_reb = df_s['REB'].mean() if not df_s['REB'].empty else 1.0
                         media_ast = df_s['AST'].mean() if not df_s['AST'].empty else 1.0
@@ -542,11 +554,11 @@ if menu == "1. 🔍 Analisi Partita":
                         else:
                             peso_pts, peso_reb, peso_ast = 0.60, 0.20, 0.20 
 
-                        # 3. FUSIONE DEI BONUS: PRA Assoluti + PRA Derivati dalla percentuale difensiva
+                        # 5. FUSIONE DEI BONUS (PRA Assoluti + PRA calcolati dal 5% difensivo)
                         valore_aggiunto_difesa = media_pra * bonus_perc
                         bonus_pra_totale = bonus_assoluto + valore_aggiunto_difesa
 
-                        # 4. Applichiamo i malus stanchezza e troviamo il netto da spalmare
+                        # 6. Applicazione Malus Stanchezza e aggiornamento del dizionario 'res'
                         net_change = bonus_pra_totale - (3.0 if RIENTRO else 0.0) - (1.5 if BACK_TO_BACK else 0.0)
                         
                         if net_change != 0:
@@ -712,4 +724,5 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
