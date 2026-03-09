@@ -554,9 +554,13 @@ if menu == "1. 🔍 Analisi Partita":
                         else:
                             peso_pts, peso_reb, peso_ast = 0.60, 0.20, 0.20 
 
-                        # 5. FUSIONE DEI BONUS (PRA Assoluti + PRA calcolati dal 5% difensivo)
+                        # 5. FUSIONE DEI BONUS E TETTO DINAMICO
                         valore_aggiunto_difesa = media_pra * bonus_perc
                         bonus_pra_totale = bonus_assoluto + valore_aggiunto_difesa
+                        
+                        # L'Hard Cap Intelligente: Il bonus totale non può MAI superare il 10% della media storica del giocatore
+                        cap_dinamico = media_pra * 0.10
+                        bonus_pra_totale = min(bonus_pra_totale, cap_dinamico)
 
                         # 6. Applicazione Malus Stanchezza e aggiornamento del dizionario 'res'
                         net_change = bonus_pra_totale - (3.0 if RIENTRO else 0.0) - (1.5 if BACK_TO_BACK else 0.0)
@@ -724,5 +728,6 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
 
