@@ -56,6 +56,32 @@ def calc_triple_double_prob(res, stds):
     # Probabilità che si verifichino tutte e 3 contemporaneamente
     return p_pts * p_reb * p_ast
 
+def calc_top_scorer_prob(target_mu, target_sigma, competitors_data):
+    """
+    Calcola la probabilità che il giocatore target segni più punti di tutti i competitor.
+    competitors_data è una lista di tuple: [(mu_comp1, sigma_comp1), (mu_comp2, sigma_comp2)...]
+    """
+    if pd.isna(target_sigma) or target_sigma == 0 or not competitors_data:
+        return 0.0
+        
+    prob_totale = 1.0
+    for comp_mu, comp_sigma in competitors_data:
+        if pd.isna(comp_sigma) or comp_sigma == 0:
+            continue
+            
+        # Unione delle due varianze (Volatilità combinata)
+        sigma_combinata = math.sqrt((target_sigma ** 2) + (comp_sigma ** 2))
+        
+        # Z-Score della differenza (Vogliamo che Target - Competitor > 0)
+        # Usiamo -0.5 come correzione di continuità per il pareggio
+        z_score = (comp_mu + 0.5 - target_mu) / (sigma_combinata * math.sqrt(2.0))
+        
+        # Probabilità di battere questo specifico competitor
+        prob_vittoria = (1.0 - math.erf(z_score)) / 2.0
+        prob_totale *= prob_vittoria
+        
+    return prob_totale
+
 def normalize_name(name):
     return unicodedata.normalize('NFD', name).encode('ascii', 'ignore').decode('utf-8').lower()
 
@@ -732,6 +758,7 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
 
 
