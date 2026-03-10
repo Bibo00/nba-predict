@@ -477,7 +477,7 @@ for nome_vip in GIOCATORI_VIP:
     RIENTRO = 10 < giorni_assenza <= 24
     BACK_TO_BACK = giorni_assenza <= 1
 
-    bonus_assoluto, bonus_perc = evaluate_injury_bonus(lista_infortunati_squadra, lista_infortunati_avversari, POS, "2024-25", DEF_DATA, [])
+    bonus_assoluto, bonus_perc = evaluate_injury_bonus(lista_infortunati_squadra, lista_infortunati_avversari, POS, "2025-26", DEF_DATA, [])
     
     df_dvp = fetch_dvp_rankings(POS)
     dvp_row = df_dvp[df_dvp['Team'].str.contains(OPP_FULL, case=False)]
