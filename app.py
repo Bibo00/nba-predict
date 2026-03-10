@@ -698,7 +698,6 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
             target_vincita = int(linea) + 1
             sigma = stds.get(s_scelta, 0)
             
-            import math
             if pd.isna(sigma) or sigma == 0:
                 probabilita = 1.0 if proiezione_bot >= target_vincita else 0.0
             else:
@@ -750,6 +749,7 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
 
 
