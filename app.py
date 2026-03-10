@@ -595,6 +595,7 @@ if menu == "1. 🔍 Analisi Partita":
                             "dd_prob": dd_prob,
                             "td_prob": td_prob,
                             "best_play": best_play,
+                            "opp": OPP_ABB,
                             "timestamp": datetime.now().isoformat()
                         }
 
@@ -633,6 +634,16 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
             s_scelta = st.selectbox("Su quale statistica vuoi scommettere?", stats_disponibili)
             
         st.markdown(f"🎯 *Il bot aveva consigliato di puntare su: **{st.session_state.proiezioni_giocatori[g_scelto]['best_play']}***")
+
+        # --- NUOVO BLOCCO: MATCHUP E TIMESTAMP ---
+        opp = st.session_state.proiezioni_giocatori[g_scelto].get("opp", "Sconosciuta")
+        ts_raw = st.session_state.proiezioni_giocatori[g_scelto].get("timestamp", "")
+        if ts_raw:
+            ts_format = datetime.fromisoformat(ts_raw).strftime("%d/%m/%Y alle %H:%M")
+        else:
+            ts_format = "N/D"
+            
+        st.caption(f"⚔️ **Matchup:** vs {opp} | ⏱️ **Ultimo calcolo:** {ts_format}")
         
         st.markdown("### 📊 Statline Proiettata")
         p_stats = st.session_state.proiezioni_giocatori[g_scelto]["stats"]
@@ -728,3 +739,4 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
