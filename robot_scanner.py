@@ -46,12 +46,20 @@ def clean_name_for_match(name):
     return n.strip()
 
 def safe_api_call(endpoint_class, **kwargs):
-    for i in range(3):
+    tentativi = 5
+    attesa = 2.0  # Partiamo con 2 secondi di attesa
+    
+    for i in range(tentativi):
         try:
             response = endpoint_class(**kwargs)
             return response.get_data_frames()[0]
-        except:
-            time.sleep(1.5)
+        except Exception as e:
+            if i < tentativi - 1:
+                print(f"⚠️ Server NBA non risponde. Ripietiamo tra {attesa} secondi... (Tentativo {i+1}/{tentativi})")
+                time.sleep(attesa)
+                attesa *= 2  # Raddoppia il tempo di attesa ad ogni fallimento (2s -> 4s -> 8s -> 16s)
+            else:
+                print(f"❌ Fallimento definitivo dopo {tentativi} tentativi per l'endpoint {endpoint_class.__name__}.")
     return pd.DataFrame()
 
 def get_injury_stats(name, season):
