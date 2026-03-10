@@ -457,6 +457,9 @@ if menu == "1. 🔍 Analisi Partita":
             if extra_giocatori:
                 lista_finale_giocatori += [n.strip() for n in extra_giocatori.split(",") if n.strip()]
 
+            st.markdown("---")
+            st.session_state.calcola_top_scorer = st.toggle("🏆 Calcola probabilità 'Miglior Realizzatore'", value=False, help="Attivalo solo se vuoi scommettere su chi farà più punti nel match (Aumenta il tempo di caricamento).")
+
     if st.button("🚀 AVVIA ANALISI SCANNER", type="primary"):
         if not SQUADRA_ANALIZZATA_ABB or not OPP_ABB or not lista_finale_giocatori:
             st.warning("Assicurati di aver inserito squadre e giocatori prima di avviare.")
@@ -630,35 +633,36 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
             stats_disponibili = list(st.session_state.proiezioni_giocatori[g_scelto]["stats"].keys())
             if "Doppia Doppia" not in stats_disponibili: stats_disponibili.append("Doppia Doppia")
             if "Tripla Doppia" not in stats_disponibili: stats_disponibili.append("Tripla Doppia")
+            
+            # Aggiungiamo il Miglior Realizzatore se è stato calcolato
+            if "prob_top_scorer" in st.session_state.proiezioni_giocatori[g_scelto]:
+                if "Miglior Realizzatore" not in stats_disponibili: stats_disponibili.append("Miglior Realizzatore")
+                
             s_scelta = st.selectbox("Su quale statistica vuoi scommettere?", stats_disponibili)
             
         st.markdown(f"🎯 *Il bot aveva consigliato di puntare su: **{st.session_state.proiezioni_giocatori[g_scelto]['best_play']}***")
         
-        st.markdown("### 📊 Statline Proiettata")
-        p_stats = st.session_state.proiezioni_giocatori[g_scelto]["stats"]
+        # ... [Tabella metriche] ...
         
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Punti (PTS)", f"{p_stats['PTS']:.2f}")
-        c2.metric("Rimbalzi (REB)", f"{p_stats['REB']:.2f}")
-        c3.metric("Assist (AST)", f"{p_stats['AST']:.2f}")
-        c4.metric("Totale (PRA)", f"{p_stats['PRA']:.2f}")
-        
-        stds = st.session_state.proiezioni_giocatori[g_scelto].get('stds', {})
-        st.caption(f"**Volatilità (Deviazione Standard):** PTS (±{stds.get('PTS', 0):.1f}) | REB (±{stds.get('REB', 0):.1f}) | AST (±{stds.get('AST', 0):.1f})")
         st.markdown("---")
         
-        # --- LOGICA BIFORCATA PER LA DOPPIA/TRIPLA DOPPIA ---
-        if s_scelta in ["Doppia Doppia", "Tripla Doppia"]:
-            is_td = (s_scelta == "Tripla Doppia")
-            prob_evento = st.session_state.proiezioni_giocatori[g_scelto].get('td_prob' if is_td else 'dd_prob', 0)
+        # --- LOGICA BIFORCATA PER STATISTICHE SPECIALI ---
+        if s_scelta in ["Doppia Doppia", "Tripla Doppia", "Miglior Realizzatore"]:
+            if s_scelta == "Miglior Realizzatore":
+                prob_evento = st.session_state.proiezioni_giocatori[g_scelto].get('prob_top_scorer', 0)
+                quota_default = 3.50
+                target_vincita = "Più punti di tutti nel match"
+            else:
+                is_td = (s_scelta == "Tripla Doppia")
+                prob_evento = st.session_state.proiezioni_giocatori[g_scelto].get('td_prob' if is_td else 'dd_prob', 0)
+                quota_default = 15.00 if is_td else 2.50
+                target_vincita = "Doppia Cifra in 3 stats" if is_td else "Doppia Cifra in 2 stats"
             
             st.info(f"🏀 **Probabilità statistica di {s_scelta}: {prob_evento*100:.1f}%**")
             
-            quota_default = 15.00 if is_td else 2.50
             quota = st.number_input(f"Inserisci la QUOTA per il SI ({s_scelta}):", value=quota_default, step=0.01)
             
             probabilita = prob_evento
-            target_vincita = "Doppia Cifra in 3 stats" if is_td else "Doppia Cifra in 2 stats"
             scarto_perc = probabilita - (1 / quota) if quota > 0 else 0
             proiezione_bot = 0 
             sigma = 0
@@ -728,6 +732,7 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
 
 
