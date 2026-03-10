@@ -3,10 +3,21 @@ from datetime import datetime
 import time
 import requests
 import math
+import io
+import unicodedata
 
 # --- LIBRERIE NBA API ---
 from nba_api.stats.static import players, teams
-from nba_api.stats.endpoints import playergamelog, commonplayerinfo, scoreboardv3
+from nba_api.stats.endpoints import playergamelog, commonplayerinfo, playerdashboardbygeneralsplits, leaguedashplayerstats, scoreboardv3
+
+# --- LIBRERIE SELENIUM E SCRAPING ---
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 DEF_THRESHOLDS = {"PG": 110.77, "SG": 110.86, "SF": 110.01, "PF": 108.87, "C": 106.49}
 
@@ -518,7 +529,7 @@ for nome_vip in GIOCATORI_VIP:
         "timestamp": datetime.now().isoformat()
     }
 
-print(f"✅ {nome_vip} salvato. Pausa di sicurezza di 3 secondi...")
+    print(f"✅ {nome_vip} salvato. Pausa di sicurezza di 3 secondi...")
     time.sleep(3)
 
 # Salva tutto sul cloud!
