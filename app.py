@@ -607,6 +607,9 @@ if menu == "1. 🔍 Analisi Partita":
                             "timestamp": datetime.now().isoformat()
                         }
 
+                        print(f"✅ {nome_vip} salvato. Pausa di sicurezza di 3 secondi...")
+                        time.sleep(3)
+
                         salva_nel_database(st.session_state.proiezioni_giocatori)
 
                         with st.expander(f"📊 Dashboard: {NOME.upper()} vs {OPP_ABB}", expanded=True):
@@ -747,5 +750,6 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
 
