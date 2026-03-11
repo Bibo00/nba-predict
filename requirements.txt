@@ -6,3 +6,5 @@ selenium
 webdriver-manager
 requests
 lxml
+scipy
+numpy
