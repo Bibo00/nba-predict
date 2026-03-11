@@ -593,7 +593,10 @@ if menu == "1. 🔍 Analisi Partita":
                         bonus_pra_totale = min(bonus_pra_totale, cap_dinamico)
 
                         # 6. Applicazione Malus Stanchezza e aggiornamento del dizionario 'res'
-                        net_change = bonus_pra_totale - (3.0 if RIENTRO else 0.0) - (1.5 if BACK_TO_BACK else 0.0)
+                        malus_rientro = (media_pra * 0.30) if RIENTRO else 0.0
+                        malus_b2b = (media_pra * 0.05) if BACK_TO_BACK else 0.0
+                        
+                        net_change = bonus_pra_totale - malus_rientro - malus_b2b
                         
                         if net_change != 0:
                             res['PTS'] = max(0.5, res['PTS'] + (net_change * peso_pts))
@@ -771,5 +774,6 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
 
