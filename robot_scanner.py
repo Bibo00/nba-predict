@@ -146,9 +146,15 @@ def fetch_dunksandthrees_def(injured_players, opp_abb):
     options.add_argument("--disable-gpu")
     
     # --- LA MODIFICA È QUI ---
-    options.binary_location = "/usr/bin/chromium"
-    service = Service("/usr/bin/chromedriver")
-    driver = webdriver.Chrome(service=service, options=options)
+    if os.name == 'nt':
+        # Se siamo su Windows (Il server di GitHub) scarica il driver in automatico
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        # Se siamo su Linux (La tua app su Streamlit) usa i percorsi fissi
+        options.binary_location = "/usr/bin/chromium"
+        service = Service("/usr/bin/chromedriver")
+        driver = webdriver.Chrome(service=service, options=options)
     # -------------------------
     
     def_dict = {}
@@ -244,9 +250,15 @@ def fetch_dvp_rankings(pos):
     
     # --- LA MODIFICA È QUI ---
     # Diciamo a Python dove trovare esattamente browser e driver su Streamlit Cloud
-    chrome_options.binary_location = "/usr/bin/chromium"
-    service = Service("/usr/bin/chromedriver")
-    driver = webdriver.Chrome(service=service, options=chrome_options)
+    if os.name == 'nt':
+        # Se siamo su Windows (Il server di GitHub) scarica il driver in automatico
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=options)
+    else:
+        # Se siamo su Linux (La tua app su Streamlit) usa i percorsi fissi
+        options.binary_location = "/usr/bin/chromium"
+        service = Service("/usr/bin/chromedriver")
+        driver = webdriver.Chrome(service=service, options=options)
     # -------------------------
     
     try:
