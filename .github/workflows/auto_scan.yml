@@ -2,13 +2,12 @@ name: Auto NBA Scanner Daily Run
 
 on:
   schedule:
-    # Esegue ogni giorno alle 13:00 UTC (le 14:00 o 15:00 in Italia a seconda dell'ora legale)
     - cron: '0 5 * * *'
-  workflow_dispatch: # Questo ti permette di avviarlo anche a mano con un click se vuoi!
+  workflow_dispatch: 
 
 jobs:
   run-scanner:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - name: Clona il codice
         uses: actions/checkout@v3
@@ -18,11 +17,10 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Installa Chrome e Librerie
+      - name: Installa Librerie
         run: |
-          sudo apt-get update
-          sudo apt-get install -y chromium-browser chromium-chromedriver
           pip install -r requirements.txt
+          pip install webdriver-manager
 
       - name: Avvia il Robot Scanner
         run: python robot_scanner.py
