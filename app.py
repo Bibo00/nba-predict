@@ -31,6 +31,35 @@ from webdriver_manager.chrome import ChromeDriverManager
 
 DEF_THRESHOLDS = {"PG": 110.77, "SG": 110.86, "SF": 110.01, "PF": 108.87, "C": 106.49}
 
+# --- CARTA D'IDENTITÀ PER INGANNARE LA NBA ---
+custom_headers = {
+    'Host': 'stats.nba.com',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.5',
+    'Referer': 'https://www.nba.com/',
+    'Origin': 'https://www.nba.com/',
+    'Connection': 'keep-alive',
+}
+
+def safe_api_call(endpoint_class, **kwargs):
+    tentativi = 5
+    attesa = 2.0  
+    
+    for i in range(tentativi):
+        try:
+            # Aggiungiamo gli headers e un timeout massimo alla chiamata
+            response = endpoint_class(**kwargs, headers=custom_headers, timeout=30)
+            return response.get_data_frames()[0]
+        except Exception as e:
+            if i < tentativi - 1:
+                print(f"⚠️ Server NBA non risponde. Ripetiamo tra {attesa} secondi... (Tentativo {i+1}/{tentativi})")
+                time.sleep(attesa)
+                attesa *= 2  
+            else:
+                print(f"❌ Fallimento definitivo dopo {tentativi} tentativi per l'endpoint {endpoint_class.__name__}.")
+    return pd.DataFrame()
+
 def calc_prob_over_10(mu, sigma):
     """Calcola la probabilità di fare 10+ usando la distribuzione normale."""
     if pd.isna(sigma) or sigma == 0:
@@ -65,23 +94,6 @@ def clean_name_for_match(name):
         if n.endswith(suffix):
             n = n[:-len(suffix)]
     return n.strip()
-
-def safe_api_call(endpoint_class, **kwargs):
-    tentativi = 5
-    attesa = 2.0  # Partiamo con 2 secondi di attesa
-    
-    for i in range(tentativi):
-        try:
-            response = endpoint_class(**kwargs)
-            return response.get_data_frames()[0]
-        except Exception as e:
-            if i < tentativi - 1:
-                print(f"⚠️ Server NBA non risponde. Ripietiamo tra {attesa} secondi... (Tentativo {i+1}/{tentativi})")
-                time.sleep(attesa)
-                attesa *= 2  # Raddoppia il tempo di attesa ad ogni fallimento (2s -> 4s -> 8s -> 16s)
-            else:
-                print(f"❌ Fallimento definitivo dopo {tentativi} tentativi per l'endpoint {endpoint_class.__name__}.")
-    return pd.DataFrame()
 
 def get_injury_stats(name, season):
     all_p = players.get_active_players()
@@ -746,6 +758,7 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
 
 
