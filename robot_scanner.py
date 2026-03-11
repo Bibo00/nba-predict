@@ -579,9 +579,11 @@ for nome_vip in GIOCATORI_VIP:
         "timestamp": datetime.now().isoformat()
     }
 
-    print(f"✅ {nome_vip} salvato. Pausa di sicurezza di 3 secondi...")
+    print(f"✅ {nome_vip} analizzato. Aggiorno database Cloud...")
+    salva_nel_database(db_cloud)
+    
+    print(f"😴 Pausa di sicurezza di 3 secondi...")
     time.sleep(3)
 
-# Salva tutto sul cloud!
-salva_nel_database(db_cloud)
-print("✅ Automazione completata con successo! Dati inviati a JSONBin.")
+# Fine del ciclo for
+print("✅ Automazione terminata. Tutti i giocatori disponibili sono stati aggiornati.")
