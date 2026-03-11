@@ -567,6 +567,21 @@ if menu == "1. 🔍 Analisi Partita":
             if extra_giocatori:
                 lista_finale_giocatori += [n.strip() for n in extra_giocatori.split(",") if n.strip()]
 
+    if st.button("🔧 Test Connessione NBA"):
+    
+    try:
+        # Test 1: verifica che il proxy sia raggiungibile
+        r = requests.get(
+            "https://stats.nba.com/stats/commonplayerinfo?PlayerID=2544&LeagueID=",
+            headers=custom_headers,
+            proxies={"http": PROXY_URL, "https": PROXY_URL},
+            timeout=30
+        )
+        st.success(f"✅ Proxy funziona! Status code: {r.status_code}")
+        
+    except Exception as e:
+        st.error(f"❌ Errore: {e}")
+
     if st.button("🚀 AVVIA ANALISI SCANNER", type="primary"):
         if not SQUADRA_ANALIZZATA_ABB or not OPP_ABB or not lista_finale_giocatori:
             st.warning("Assicurati di aver inserito squadre e giocatori prima di avviare.")
@@ -857,6 +872,7 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
 
 
