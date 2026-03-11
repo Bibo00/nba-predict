@@ -67,20 +67,12 @@ def clean_name_for_match(name):
     return n.strip()
 
 def safe_api_call(endpoint_class, **kwargs):
-    tentativi = 5
-    attesa = 2.0  # Partiamo con 2 secondi di attesa
-    
-    for i in range(tentativi):
+    for i in range(3):
         try:
             response = endpoint_class(**kwargs)
             return response.get_data_frames()[0]
-        except Exception as e:
-            if i < tentativi - 1:
-                print(f"⚠️ Server NBA non risponde. Ripietiamo tra {attesa} secondi... (Tentativo {i+1}/{tentativi})")
-                time.sleep(attesa)
-                attesa *= 2  # Raddoppia il tempo di attesa ad ogni fallimento (2s -> 4s -> 8s -> 16s)
-            else:
-                print(f"❌ Fallimento definitivo dopo {tentativi} tentativi per l'endpoint {endpoint_class.__name__}.")
+        except:
+            time.sleep(1.5)
     return pd.DataFrame()
 
 def get_injury_stats(name, season):
@@ -142,8 +134,14 @@ def fetch_dunksandthrees_def(injured_players, opp_abb):
     options.add_argument("--disable-gpu")
     
     # --- LA MODIFICA È QUI ---
-    options.binary_location = "/usr/bin/chromium"
-    service = Service("/usr/bin/chromedriver")
+    if os.path.exists("/usr/bin/chromium"):
+        # Se siamo sul server Streamlit Cloud
+        options.binary_location = "/usr/bin/chromium"
+        service = Service("/usr/bin/chromedriver")
+    else:
+        # Se siamo sul tuo PC locale (Windows/Mac)
+        service = Service(ChromeDriverManager().install())
+        
     driver = webdriver.Chrome(service=service, options=options)
     # -------------------------
     
@@ -240,8 +238,14 @@ def fetch_dvp_rankings(pos):
     
     # --- LA MODIFICA È QUI ---
     # Diciamo a Python dove trovare esattamente browser e driver su Streamlit Cloud
-    chrome_options.binary_location = "/usr/bin/chromium"
-    service = Service("/usr/bin/chromedriver")
+    if os.path.exists("/usr/bin/chromium"):
+        # Se siamo sul server Streamlit Cloud
+        chrome_options.binary_location = "/usr/bin/chromium"
+        service = Service("/usr/bin/chromedriver")
+    else:
+        # Se siamo sul tuo PC locale (Windows/Mac)
+        service = Service(ChromeDriverManager().install())
+        
     driver = webdriver.Chrome(service=service, options=chrome_options)
     # -------------------------
     
@@ -603,7 +607,6 @@ if menu == "1. 🔍 Analisi Partita":
                             "dd_prob": dd_prob,
                             "td_prob": td_prob,
                             "best_play": best_play,
-                            "opp": OPP_ABB,
                             "timestamp": datetime.now().isoformat()
                         }
 
@@ -642,16 +645,6 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
             s_scelta = st.selectbox("Su quale statistica vuoi scommettere?", stats_disponibili)
             
         st.markdown(f"🎯 *Il bot aveva consigliato di puntare su: **{st.session_state.proiezioni_giocatori[g_scelto]['best_play']}***")
-
-        # --- NUOVO BLOCCO: MATCHUP E TIMESTAMP ---
-        opp = st.session_state.proiezioni_giocatori[g_scelto].get("opp", "Sconosciuta")
-        ts_raw = st.session_state.proiezioni_giocatori[g_scelto].get("timestamp", "")
-        if ts_raw:
-            ts_format = datetime.fromisoformat(ts_raw).strftime("%d/%m/%Y alle %H:%M")
-        else:
-            ts_format = "N/D"
-            
-        st.caption(f"⚔️ **Matchup:** vs {opp} | ⏱️ **Ultimo calcolo:** {ts_format}")
         
         st.markdown("### 📊 Statline Proiettata")
         p_stats = st.session_state.proiezioni_giocatori[g_scelto]["stats"]
@@ -695,6 +688,7 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
             target_vincita = int(linea) + 1
             sigma = stds.get(s_scelta, 0)
             
+            import math
             if pd.isna(sigma) or sigma == 0:
                 probabilita = 1.0 if proiezione_bot >= target_vincita else 0.0
             else:
@@ -746,7 +740,3 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
-
-
-
-
