@@ -29,6 +29,33 @@ from webdriver_manager.chrome import ChromeDriverManager
 # 1. FUNZIONI MATEMATICHE E SCRAPER
 # =====================================================================
 
+# --- CARTA D'IDENTITÀ PER INGANNARE LA NBA ---
+custom_headers = {
+    'Host': 'stats.nba.com',
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Referer': 'https://www.nba.com/',
+    'Origin': 'https://www.nba.com/',
+    'Connection': 'keep-alive',
+}
+
+def safe_api_call(endpoint_class, **kwargs):
+    tentativi = 4
+    attesa = 2.0  
+    
+    for i in range(tentativi):
+        try:
+            # Aggiungiamo il travestimento (headers) e un limite di tempo
+            response = endpoint_class(**kwargs, headers=custom_headers, timeout=15)
+            return response.get_data_frames()[0]
+        except Exception as e:
+            if i < tentativi - 1:
+                # Se fallisce, aspetta un po' di più ogni volta (2s, poi 4s, poi 8s...)
+                time.sleep(attesa)
+                attesa *= 2
+    return pd.DataFrame()
+
 DEF_THRESHOLDS = {"PG": 110.77, "SG": 110.86, "SF": 110.01, "PF": 108.87, "C": 106.49}
 
 def calc_prob_over_10(mu, sigma):
@@ -65,15 +92,6 @@ def clean_name_for_match(name):
         if n.endswith(suffix):
             n = n[:-len(suffix)]
     return n.strip()
-
-def safe_api_call(endpoint_class, **kwargs):
-    for i in range(3):
-        try:
-            response = endpoint_class(**kwargs)
-            return response.get_data_frames()[0]
-        except:
-            time.sleep(1.5)
-    return pd.DataFrame()
 
 def get_injury_stats(name, season):
     all_p = players.get_active_players()
@@ -753,4 +771,5 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
