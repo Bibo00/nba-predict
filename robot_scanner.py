@@ -412,30 +412,46 @@ GIOCATORI_VIP = [
 
 print("🤖 Avvio Robot Scanner...")
 
-# 1. Trova le partite di stanotte
-data_oggi = datetime.now().strftime('%Y-%m-%d')
-try:
-    # Mascheriamo anche la richiesta del tabellone!
-    board_data = scoreboardv3.ScoreboardV3(game_date=data_oggi, headers=custom_headers, timeout=30).get_dict()
-    games = board_data.get('scoreboard', {}).get('games', [])
-except Exception as e:
-    print(f"Errore caricamento partite: {e}")
-    games = []
-
+# 1. Trova le partite di stanotte (TRAMITE ESPN - ANTIBLOCCO)
+print("🔍 Cerco il tabellone su ESPN (Bypass Sicurezza NBA)...")
 partite_oggi = []
-for game in games:
-    away_abb = game.get('awayTeam', {}).get('teamTricode', 'UNK')
-    home_abb = game.get('homeTeam', {}).get('teamTricode', 'UNK')
-    if away_abb != 'UNK' and home_abb != 'UNK':
-        partite_oggi.append((away_abb, home_abb))
+
+try:
+    url_espn = "http://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard"
+    resp = requests.get(url_espn, timeout=15)
+    dati_espn = resp.json()
+    
+    # Dizionario per convertire le sigle ESPN in sigle standard NBA
+    espn_to_nba = {'GS': 'GSW', 'NO': 'NOP', 'NY': 'NYK', 'SA': 'SAS', 'UTAH': 'UTA', 'WSH': 'WAS'}
+    
+    for evento in dati_espn.get('events', []):
+        competitors = evento['competitions'][0]['competitors']
+        home_abb = "UNK"
+        away_abb = "UNK"
+        
+        for comp in competitors:
+            if comp['homeAway'] == 'home':
+                home_abb = comp['team']['abbreviation']
+            else:
+                away_abb = comp['team']['abbreviation']
+                
+        # Normalizziamo le sigle
+        home_nba = espn_to_nba.get(home_abb.upper(), home_abb.upper())
+        away_nba = espn_to_nba.get(away_abb.upper(), away_abb.upper())
+        
+        if home_nba != 'UNK' and away_nba != 'UNK':
+            partite_oggi.append((away_nba, home_nba))
+
+except Exception as e:
+    print(f"Errore caricamento partite da ESPN: {e}")
 
 print(f"🏀 Trovate {len(partite_oggi)} partite oggi: {partite_oggi}")
 
 # --- IL BLOCCO SALVAVITA ---
 if len(partite_oggi) == 0:
-    print("🛑 Nessuna partita trovata (o i server NBA ci stanno bloccando). Chiudo il robot per non fare danni!")
+    print("🛑 Nessuna partita trovata. Chiudo il robot per non fare danni!")
     import sys
-    sys.exit() # Spegne il server istantaneamente
+    sys.exit()
 # ---------------------------
 
 team_name_dict = {t['abbreviation']: t['full_name'] for t in teams.get_teams()}
