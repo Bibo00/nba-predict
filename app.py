@@ -12,6 +12,8 @@ import io
 import requests
 import math
 
+import random
+
 # --- LIBRERIE NBA API ---
 from nba_api.stats.static import players, teams
 from nba_api.stats.endpoints import playergamelog, commonplayerinfo, playerdashboardbygeneralsplits, leaguedashplayerstats, scoreboardv3
@@ -29,32 +31,83 @@ from webdriver_manager.chrome import ChromeDriverManager
 # 1. FUNZIONI MATEMATICHE E SCRAPER
 # =====================================================================
 
-# --- CARTA D'IDENTITÀ PER INGANNARE LA NBA ---
-custom_headers = {
-    'Host': 'stats.nba.com',
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': 'application/json, text/plain, */*',
-    'Accept-Language': 'en-US,en;q=0.9',
-    'Referer': 'https://www.nba.com/',
-    'Origin': 'https://www.nba.com/',
-    'Connection': 'keep-alive',
-}
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+def crea_sessione():
+    sessione = requests.Session()
+    
+    # Retry automatico a basso livello
+    retry = Retry(
+        total=3,
+        backoff_factor=2,
+        status_forcelist=[429, 500, 502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    sessione.mount("https://", adapter)
+    
+    # Headers che simulano un browser reale
+    sessione.headers.update({
+        'Host': 'stats.nba.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9,it;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'x-nba-stats-origin': 'stats',
+        'x-nba-stats-token': 'true',
+        'Referer': 'https://www.nba.com/',
+        'Origin': 'https://www.nba.com',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+    })
+    
+    return sessione
+
+# Crea la sessione UNA VOLTA SOLA all'avvio
+NBA_SESSION = crea_sessione()
 
 def safe_api_call(endpoint_class, **kwargs):
-    tentativi = 4
-    attesa = 2.0  
-    
+    tentativi = 5
+    attesa = 5.0
+
     for i in range(tentativi):
         try:
-            # Aggiungiamo il travestimento (headers) e un limite di tempo
-            response = endpoint_class(**kwargs, headers=custom_headers, timeout=15)
+            time.sleep(random.uniform(2.0, 4.0))
+            
+            response = endpoint_class(
+                **kwargs,
+                headers=dict(NBA_SESSION.headers),  # Passa gli headers della sessione
+                timeout=45
+            )
             return response.get_data_frames()[0]
+
         except Exception as e:
-            if i < tentativi - 1:
-                # Se fallisce, aspetta un po' di più ogni volta (2s, poi 4s, poi 8s...)
+            errore = str(e)
+            
+            if "429" in errore or "rate" in errore.lower():
+                print(f"Rate limit! Aspetto 90s...")
+                time.sleep(90.0)
+                continue
+            
+            if "10054" in errore or "ConnectionReset" in errore or "aborted" in errore.lower():
+                print(f"NBA ci ha bloccato (10054). Aspetto {attesa*3}s prima di riprovare...")
+                time.sleep(attesa * 3)  # Pausa lunga dopo un reset forzato
+                attesa *= 2
+                continue
+                
+            if "timeout" in errore.lower():
+                print(f"Timeout, tentativo {i+1}/{tentativi}. Aspetto {attesa}s...")
                 time.sleep(attesa)
                 attesa *= 2
-    return pd.DataFrame()
+                continue
+            
+            print(f"Errore sconosciuto: {errore}")
+            time.sleep(attesa)
+            attesa *= 2
+
+    return None
 
 DEF_THRESHOLDS = {"PG": 110.77, "SG": 110.86, "SF": 110.01, "PF": 108.87, "C": 106.49}
 
@@ -527,13 +580,16 @@ if menu == "1. 🔍 Analisi Partita":
                     
                     try:
                         info = safe_api_call(commonplayerinfo.CommonPlayerInfo, player_id=p_id)
-                        if info.empty or 'POSITION' not in info.columns:
-                            st.warning(f"⚠️ I server NBA non rispondono per {NOME}. Salto il giocatore per evitare crash.")
+                        if info is None:
+                            st.warning(f"⚠️ Server NBA non risponde per {NOME}. Riprova tra qualche minuto.")
+                            continue
+
+                        df_logs = safe_api_call(playergamelog.PlayerGameLog, player_id=p_id)
+                        if df_logs is None:
+                            st.warning(f"⚠️ Impossibile scaricare il gamelog di {NOME}.")
                             continue
                         POS = info['POSITION'].values[0]
                         
-                        df_logs = safe_api_call(playergamelog.PlayerGameLog, player_id=p_id)
-                        if df_logs.empty: continue
                         df_logs['GAME_DATE'] = pd.to_datetime(df_logs['GAME_DATE'])
                         
                         df_f = df_logs.head(10)
@@ -774,6 +830,5 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
-
 
 
