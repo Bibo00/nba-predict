@@ -23,4 +23,6 @@ jobs:
           pip install webdriver-manager
 
       - name: Avvia il Robot Scanner
+        env:
+          PYTHONIOENCODING: utf-8
         run: python robot_scanner.py
