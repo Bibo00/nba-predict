@@ -31,13 +31,28 @@ from webdriver_manager.chrome import ChromeDriverManager
 # 1. FUNZIONI MATEMATICHE E SCRAPER
 # =====================================================================
 
+# =====================================================================
+# CONFIGURAZIONE WEBSHARE - SOSTITUISCI QUESTI 4 VALORI
+# =====================================================================
+WEBSHARE_HOST = "31.59.20.176"        # Host del proxy
+WEBSHARE_PORT = "6754"                    # Porta (di solito 80 o 8080)
+WEBSHARE_USER = "rgfswxnz"    # Username da Webshare
+WEBSHARE_PASS = "qcutpr5utyan"           # Password da Webshare
+# =====================================================================
+import random
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+
+PROXY_URL = f"http://{WEBSHARE_USER}:{WEBSHARE_PASS}@{WEBSHARE_HOST}:{WEBSHARE_PORT}"
+
+PROXIES = {
+    "http": PROXY_URL,
+    "https": PROXY_URL
+}
 
 def crea_sessione():
     sessione = requests.Session()
     
-    # Retry automatico a basso livello
     retry = Retry(
         total=3,
         backoff_factor=2,
@@ -46,7 +61,6 @@ def crea_sessione():
     adapter = HTTPAdapter(max_retries=retry)
     sessione.mount("https://", adapter)
     
-    # Headers che simulano un browser reale
     sessione.headers.update({
         'Host': 'stats.nba.com',
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
@@ -63,9 +77,11 @@ def crea_sessione():
         'Sec-Fetch-Site': 'same-site',
     })
     
+    # Aggiunge il proxy alla sessione
+    sessione.proxies.update(PROXIES)
+    
     return sessione
 
-# Crea la sessione UNA VOLTA SOLA all'avvio
 NBA_SESSION = crea_sessione()
 
 def safe_api_call(endpoint_class, **kwargs):
@@ -78,8 +94,10 @@ def safe_api_call(endpoint_class, **kwargs):
             
             response = endpoint_class(
                 **kwargs,
-                headers=dict(NBA_SESSION.headers),  # Passa gli headers della sessione
-                timeout=45
+                headers=dict(NBA_SESSION.headers),
+                timeout=45,
+                # Passa il proxy direttamente all'endpoint nba_api
+                proxies=PROXIES
             )
             return response.get_data_frames()[0]
 
@@ -92,8 +110,8 @@ def safe_api_call(endpoint_class, **kwargs):
                 continue
             
             if "10054" in errore or "ConnectionReset" in errore or "aborted" in errore.lower():
-                print(f"NBA ci ha bloccato (10054). Aspetto {attesa*3}s prima di riprovare...")
-                time.sleep(attesa * 3)  # Pausa lunga dopo un reset forzato
+                print(f"NBA ci ha bloccato (10054). Aspetto {attesa*3}s...")
+                time.sleep(attesa * 3)
                 attesa *= 2
                 continue
                 
@@ -830,5 +848,6 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
 
