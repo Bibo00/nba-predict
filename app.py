@@ -31,69 +31,42 @@ from webdriver_manager.chrome import ChromeDriverManager
 # 1. FUNZIONI MATEMATICHE E SCRAPER
 # =====================================================================
 
-# =====================================================================
-# CONFIGURAZIONE WEBSHARE - SOSTITUISCI QUESTI 4 VALORI
-# =====================================================================
-WEBSHARE_HOST = "31.59.20.176"        # Host del proxy
-WEBSHARE_PORT = "6754"                    # Porta (di solito 80 o 8080)
-WEBSHARE_USER = "rgfswxnz"    # Username da Webshare
-WEBSHARE_PASS = "qcutpr5utyan"           # Password da Webshare
-# =====================================================================
-import random
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-PROXY_URL = f"http://{WEBSHARE_USER}:{WEBSHARE_PASS}@{WEBSHARE_HOST}:{WEBSHARE_PORT}"
+def crea_sessione():
+    sessione = requests.Session()
+    
+    # Retry automatico a basso livello
+    retry = Retry(
+        total=3,
+        backoff_factor=2,
+        status_forcelist=[429, 500, 502, 503, 504]
+    )
+    adapter = HTTPAdapter(max_retries=retry)
+    sessione.mount("https://", adapter)
+    
+    # Headers che simulano un browser reale
+    sessione.headers.update({
+        'Host': 'stats.nba.com',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'application/json, text/plain, */*',
+        'Accept-Language': 'en-US,en;q=0.9,it;q=0.8',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'x-nba-stats-origin': 'stats',
+        'x-nba-stats-token': 'true',
+        'Referer': 'https://www.nba.com/',
+        'Origin': 'https://www.nba.com',
+        'Connection': 'keep-alive',
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'cors',
+        'Sec-Fetch-Site': 'same-site',
+    })
+    
+    return sessione
 
-PROXIES = {
-    "http": PROXY_URL,
-    "https": PROXY_URL
-}
-_OriginalSession = requests.Session
-
-class PatchedSession(_OriginalSession):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        
-        # Proxy sempre attivo
-        self.proxies.update({
-            "http": PROXY_URL,
-            "https": PROXY_URL
-        })
-        
-        # Headers anti-blocco NBA
-        self.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'Accept-Language': 'en-US,en;q=0.9,it;q=0.8',
-            'Accept-Encoding': 'gzip, deflate, br',
-            'x-nba-stats-origin': 'stats',
-            'x-nba-stats-token': 'true',
-            'Referer': 'https://www.nba.com/',
-            'Origin': 'https://www.nba.com',
-            'Connection': 'keep-alive',
-            'Sec-Fetch-Dest': 'empty',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Site': 'same-site',
-        })
-        
-        # Retry automatico
-        retry = Retry(
-            total=3,
-            backoff_factor=2,
-            status_forcelist=[429, 500, 502, 503, 504]
-        )
-        adapter = HTTPAdapter(max_retries=retry)
-        self.mount("https://", adapter)
-        self.mount("http://", adapter)
-
-# Sostituiamo requests.Session con la nostra versione
-requests.Session = PatchedSession
-
-# =====================================================================
-# Da qui in poi tutto il codice rimane INVARIATO
-# nba_api userà automaticamente il proxy senza saperlo
-# =====================================================================
+# Crea la sessione UNA VOLTA SOLA all'avvio
+NBA_SESSION = crea_sessione()
 
 def safe_api_call(endpoint_class, **kwargs):
     tentativi = 5
@@ -105,7 +78,7 @@ def safe_api_call(endpoint_class, **kwargs):
             
             response = endpoint_class(
                 **kwargs,
-                headers=custom_headers,
+                headers=dict(NBA_SESSION.headers),  # Passa gli headers della sessione
                 timeout=45
             )
             return response.get_data_frames()[0]
@@ -119,8 +92,8 @@ def safe_api_call(endpoint_class, **kwargs):
                 continue
             
             if "10054" in errore or "ConnectionReset" in errore or "aborted" in errore.lower():
-                print(f"Connessione resettata. Aspetto {attesa*3}s...")
-                time.sleep(attesa * 3)
+                print(f"NBA ci ha bloccato (10054). Aspetto {attesa*3}s prima di riprovare...")
+                time.sleep(attesa * 3)  # Pausa lunga dopo un reset forzato
                 attesa *= 2
                 continue
                 
@@ -567,28 +540,6 @@ if menu == "1. 🔍 Analisi Partita":
             if extra_giocatori:
                 lista_finale_giocatori += [n.strip() for n in extra_giocatori.split(",") if n.strip()]
 
-    if st.button("🔧 Test Connessione NBA"):
-        test_headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
-            'x-nba-stats-origin': 'stats',
-            'x-nba-stats-token': 'true',
-            'Referer': 'https://www.nba.com/',
-            'Origin': 'https://www.nba.com',
-        }
-        
-        try:
-            r = requests.get(
-                "https://stats.nba.com/stats/commonplayerinfo?PlayerID=2544&LeagueID=",
-                headers=test_headers,
-                proxies={"http": PROXY_URL, "https": PROXY_URL},
-                timeout=30
-            )
-            st.success(f"✅ Proxy funziona! Status code: {r.status_code}")
-            
-        except Exception as e:
-            st.error(f"❌ Errore: {e}")
-
     if st.button("🚀 AVVIA ANALISI SCANNER", type="primary"):
         if not SQUADRA_ANALIZZATA_ABB or not OPP_ABB or not lista_finale_giocatori:
             st.warning("Assicurati di aver inserito squadre e giocatori prima di avviare.")
@@ -879,10 +830,4 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
-
-
-
-
-
-
 
