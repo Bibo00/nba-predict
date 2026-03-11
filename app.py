@@ -87,23 +87,23 @@ def safe_api_call(endpoint_class, **kwargs):
             errore = str(e)
             
             if "429" in errore or "rate" in errore.lower():
-                print(f"Rate limit! Aspetto 90s...")
+                print(f"Rate limit! Aspetto 90s...", flush = True)
                 time.sleep(90.0)
                 continue
             
             if "10054" in errore or "ConnectionReset" in errore or "aborted" in errore.lower():
-                print(f"NBA ci ha bloccato (10054). Aspetto {attesa*3}s prima di riprovare...")
+                print(f"NBA ci ha bloccato (10054). Aspetto {attesa*3}s prima di riprovare...", flush = True)
                 time.sleep(attesa * 3)  # Pausa lunga dopo un reset forzato
                 attesa *= 2
                 continue
                 
             if "timeout" in errore.lower():
-                print(f"Timeout, tentativo {i+1}/{tentativi}. Aspetto {attesa}s...")
+                print(f"Timeout, tentativo {i+1}/{tentativi}. Aspetto {attesa}s...", flush = True)
                 time.sleep(attesa)
                 attesa *= 2
                 continue
             
-            print(f"Errore sconosciuto: {errore}")
+            print(f"Errore sconosciuto: {errore}", flush = True)
             time.sleep(attesa)
             attesa *= 2
 
@@ -830,4 +830,5 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
         else:
 
             st.error(f"❌ **DA EVITARE (Il banco ha un vantaggio matematico)**")
+
 
