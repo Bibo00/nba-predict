@@ -16,7 +16,7 @@ import random
 
 # --- LIBRERIE NBA API ---
 from nba_api.stats.static import players, teams
-from nba_api.stats.endpoints import playergamelog, commonplayerinfo, playerdashboardbygeneralsplits, leaguedashplayerstats, scoreboardv3
+from nba_api.stats.endpoints import playergamelog, commonplayerinfo, playerdashboardbygeneralsplits, scoreboardv3, teamgamelogs
 
 # --- LIBRERIE SELENIUM ---
 from selenium import webdriver
@@ -135,7 +135,11 @@ def get_injury_stats(name, season):
         info = safe_api_call(commonplayerinfo.CommonPlayerInfo, player_id=p_dict['id'])
         dash_b = safe_api_call(playerdashboardbygeneralsplits.PlayerDashboardByGeneralSplits, player_id=p_dict['id'], season=season, measure_type_detailed='Base', per_mode_detailed='PerGame')
         dash_a = safe_api_call(playerdashboardbygeneralsplits.PlayerDashboardByGeneralSplits, player_id=p_dict['id'], season=season, measure_type_detailed='Advanced', per_mode_detailed='PerGame')
-        return {"name": name, "pos": info['POSITION'].values[0], "mpg": dash_b['MIN'].values[0], "ppg": dash_b['PTS'].values[0], "defrtg": dash_a['DEF_RATING'].values[0]}
+        # Cerca il return dentro get_injury_stats e aggiungi in fondo: "gp": dash_b['GP'].values[0] se la tabella non è vuota.
+# Esempio pratico:
+        gp_val = dash_b['GP'].values[0] if not dash_b.empty else 0
+        return {"name": name, "pos": info['POSITION'].values[0], "mpg": dash_b['MIN'].values[0], "ppg": dash_b['PTS'].values[0], "defrtg": dash_a['DEF_RATING'].values[0], "gp": gp_val}
+        #return {"name": name, "pos": info['POSITION'].values[0], "mpg": dash_b['MIN'].values[0], "ppg": dash_b['PTS'].values[0], "defrtg": dash_a['DEF_RATING'].values[0]}
     except: return None
 
 def are_positions_similar(pos1, pos2):
@@ -252,7 +256,7 @@ def get_espn_starters(team_abb):
     except: return []
 
 # --- FUNZIONE AGGIORNATA PER LE LISTE FILTRATE ---
-def evaluate_injury_bonus(infortuni_tua_selezionati, infortuni_avv_selezionati, target_pos, target_ppg, current_season, def_data, compagni_da_ignorare=None):
+def evaluate_injury_bonus(infortuni_tua_selezionati, infortuni_avv_selezionati, target_pos, target_ppg, current_season, def_data, target_gp, compagni_da_ignorare=None):
     if compagni_da_ignorare is None: compagni_da_ignorare = []
     bonus_perc_offesa = 0.0
     bonus_perc_difesa = 0.0
@@ -262,6 +266,15 @@ def evaluate_injury_bonus(infortuni_tua_selezionati, infortuni_avv_selezionati, 
         if normalize_name(p) in compagni_da_ignorare: continue
         stats = get_injury_stats(p, current_season)
         if stats:
+            # --- NUOVO: Filtro Assenza Prolungata (> 35 partite) ---
+            # Calcoliamo le partite saltate usando le partite del target (target_gp) come proxy dei match di squadra
+            compagno_gp = stats.get('gp', 82) 
+            partite_saltate = target_gp - compagno_gp
+            
+            if partite_saltate > 20:
+                continue # Salta questo compagno! Il volume è già assorbito dalla media stagionale.
+            # -------------------------------------------------------
+
             compagno_mpg = stats['mpg']
             compagno_ppg = stats['ppg']
             pos_simile = are_positions_similar(target_pos, stats['pos'])
@@ -496,6 +509,117 @@ def calcola_voto_v3_1(P, EV, Quota, Mod_volatilita):
     # Restituisce il voto arrotondato a due cifre decimali
     return round(Voto_Finale, 2)
 
+
+@st.cache_data(ttl=3600)
+def check_blowout_risk(team_abb, opp_abb, current_season, prev_season):
+    """Calcola il rischio blowout sulle ultime 2 partite H2H giocate negli ultimi 365 giorni."""
+    all_teams = teams.get_teams()
+    team_id = next((t['id'] for t in all_teams if t['abbreviation'] == team_abb.upper()), None)
+    if not team_id: return False, ""
+    
+    try:
+        # 1. Scarichiamo i log di ENTRAMBE le stagioni (Corrente e Precedente)
+        logs_curr = safe_api_call(teamgamelogs.TeamGameLogs, team_id_nullable=team_id, season_nullable=current_season)
+        logs_prev = safe_api_call(teamgamelogs.TeamGameLogs, team_id_nullable=team_id, season_nullable=prev_season)
+        
+        dfs = []
+        if logs_curr is not None and not logs_curr.empty: dfs.append(logs_curr)
+        if logs_prev is not None and not logs_prev.empty: dfs.append(logs_prev)
+        
+        if not dfs: return False, ""
+        
+        # Uniamo le due stagioni in un unico database
+        logs = pd.concat(dfs, ignore_index=True)
+        
+        # 2. Filtriamo solo gli scontri diretti contro questo specifico avversario
+        logs_h2h = logs[logs['MATCHUP'].str.contains(opp_abb.upper())].copy()
+        
+        if logs_h2h.empty: return False, ""
+        
+        # 3. Applichiamo il filtro temporale: Solo gli ultimi 365 giorni
+        logs_h2h['GAME_DATE'] = pd.to_datetime(logs_h2h['GAME_DATE'])
+        un_anno_fa = datetime.now() - timedelta(days=365)
+        logs_h2h = logs_h2h[logs_h2h['GAME_DATE'] >= un_anno_fa]
+        
+        if logs_h2h.empty: return False, ""
+        
+        # 4. Ordiniamo per data e prendiamo SOLO LE ULTIME 2
+        recent_2_h2h = logs_h2h.sort_values(by='GAME_DATE', ascending=False).head(2)
+        
+        partite_trovate = len(recent_2_h2h) # Sarà 1 o 2
+        avg_scarto_h2h = recent_2_h2h['PLUS_MINUS'].abs().mean()
+        
+        # 5. Applichiamo la soglia dei 15 punti
+        if avg_scarto_h2h > 15.0:
+            testo_partite = "Nell'unico scontro diretto" if partite_trovate == 1 else "Negli ultimi 2 scontri diretti"
+            return True, f"{testo_partite} (ultimi 365 giorni) lo scarto medio è stato di **{avg_scarto_h2h:.1f} punti**"
+                
+    except Exception:
+        pass
+    
+    return False, ""
+
+@st.cache_data(ttl=3600)
+def check_april_load_management(player_id, prev_season_str):
+    """Verifica storicamente se il giocatore subisce il load management ad Aprile."""
+    try:
+        prev_logs = safe_api_call(playergamelog.PlayerGameLog, player_id=player_id, season=prev_season_str, season_type_all_star="Regular Season")
+        if prev_logs is None or prev_logs.empty:
+            return True, "Nessun dato storico disponibile per l'anno scorso."
+            
+        prev_logs['GAME_DATE'] = pd.to_datetime(prev_logs['GAME_DATE'])
+        
+        # Converte i minuti "35:12" in 35.2 float
+        def parse_min(m):
+            try:
+                if isinstance(m, str) and ':' in m:
+                    return float(m.split(':')[0]) + float(m.split(':')[1])/60.0
+                return float(m)
+            except: return 0.0
+                
+        prev_logs['MIN_FLOAT'] = prev_logs['MIN'].apply(parse_min)
+        
+        march_logs = prev_logs[prev_logs['GAME_DATE'].dt.month == 3]
+        april_logs = prev_logs[prev_logs['GAME_DATE'].dt.month == 4]
+        
+        if march_logs.empty:
+            return True, "Assente a Marzo dell'anno scorso (impossibile fare un paragone)."
+            
+        avg_min_march = march_logs['MIN_FLOAT'].mean()
+        
+        if april_logs.empty:
+            return False, f"0 partite giocate ad Aprile l'anno scorso (Media Marzo: {avg_min_march:.1f}m)."
+            
+        avg_min_april = april_logs['MIN_FLOAT'].mean()
+        gp_april = len(april_logs)
+        
+        # Trova la squadra in cui giocava ad Aprile l'anno scorso
+        matchup_str = april_logs.iloc[0]['MATCHUP']
+        team_abb = matchup_str.split(' ')[0]
+        
+        all_teams = teams.get_teams()
+        team_id = next((t['id'] for t in all_teams if t['abbreviation'] == team_abb), None)
+        
+        team_gp_april = 7 # Standard di sicurezza
+        if team_id:
+            t_logs = safe_api_call(teamgamelogs.TeamGameLogs, team_id_nullable=team_id, season_nullable=prev_season_str)
+            if t_logs is not None and not t_logs.empty:
+                t_logs['GAME_DATE'] = pd.to_datetime(t_logs['GAME_DATE'])
+                team_gp_april = len(t_logs[t_logs['GAME_DATE'].dt.month == 4])
+                
+        if team_gp_april == 0: team_gp_april = 1
+        
+        perc_min = avg_min_april / avg_min_march if avg_min_march > 0 else 0
+        perc_gp = gp_april / team_gp_april
+        
+        if perc_min >= 0.85 and perc_gp >= 0.75:
+            return True, f"Idoneo: {avg_min_april:.1f}m ({perc_min*100:.0f}% vs Mar), {gp_april}/{team_gp_april} GP"
+        else:
+            return False, f"Scartato: {avg_min_april:.1f}m vs {avg_min_march:.1f}m ({perc_min*100:.0f}%), {gp_april}/{team_gp_april} GP"
+            
+    except Exception as e:
+        return True, f"Errore calcolo filtro: {e}"
+
 # =====================================================================
 # 2. INTERFACCIA GRAFICA STREAMLIT
 # =====================================================================
@@ -674,8 +798,12 @@ if menu == "1. 🔍 Analisi Partita":
         else:
             with st.spinner("Analisi e scraping in corso. Attendi..."):
                 STAGIONE = "2025-26"
+                PREV_STAGIONE = "2024-25" # Stringa per il filtro anno precedente
                 SQUADRA_ANALIZZATA = st.session_state.team_name_dict.get(SQUADRA_ANALIZZATA_ABB, SQUADRA_ANALIZZATA_ABB)
                 OPP_FULL = st.session_state.team_name_dict.get(OPP_ABB, OPP_ABB)
+                
+                # --- NOVITÀ: Eseguiamo il controllo Blowout (H2H 365 giorni) ---
+                is_blowout_risk, blowout_margin = check_blowout_risk(SQUADRA_ANALIZZATA_ABB, OPP_ABB, STAGIONE, PREV_STAGIONE)
                 
                 disp = st.session_state.get('infortunati_disponibili', [])
                 inj_tua = st.session_state.get('inj_tua', {'out': [], 'dtd': []})
@@ -719,6 +847,11 @@ if menu == "1. 🔍 Analisi Partita":
                             continue
                         POS = info['POSITION'].values[0]
                         
+                        # --- FIX BUG API NBA (Ordinamento Cronologico) ---
+                        # Convertiamo in data e forziamo l'ordine dal più recente al più vecchio
+                        df_logs['GAME_DATE'] = pd.to_datetime(df_logs['GAME_DATE'])
+                        df_logs = df_logs.sort_values(by='GAME_DATE', ascending=False).reset_index(drop=True)
+                        
                         df_f = df_logs.head(10)
                         df_h = df_logs[df_logs['MATCHUP'].str.contains(OPP_ABB)]
                         
@@ -747,14 +880,29 @@ if menu == "1. 🔍 Analisi Partita":
 
                         oggi = datetime.now().date()
                         # Forziamo la conversione in datetime in modo sicuro, qualunque sia il formato di origine
-                        data_ultima_gara = pd.to_datetime(df_f.iloc[0]['GAME_DATE']).date() if not df_f.empty else oggi
+                        if not df_f.empty:
+                            try:
+                                data_ultima_gara = pd.to_datetime(
+                                    df_f.iloc[0]['GAME_DATE'], 
+                                    format='mixed',  # gestisce formati misti
+                                    dayfirst=False
+                                ).date()
+                            except Exception:
+                                # Fallback esplicito per il formato NBA "MON DD, YYYY"
+                                from dateutil import parser as dateparser
+                                data_ultima_gara = dateparser.parse(str(df_f.iloc[0]['GAME_DATE'])).date()
+                        else:
+                            data_ultima_gara = oggi
                         giorni_assenza = (oggi - data_ultima_gara).days
+                        print(data_ultima_gara)
                         
-                        if giorni_assenza > 24:
+                        # --- FIX SOGLIE RIENTRO ---
+                        # Alziamo il warning a 28 giorni e la soglia Rientro a 12 (garantisce almeno 4+ partite saltate)
+                        if giorni_assenza > 28:
                             st.warning(f"⏳ {NOME}: Assente da {giorni_assenza} giorni. Rischio Minutes Restriction.")
                             continue
                             
-                        RIENTRO = 10 < giorni_assenza <= 24
+                        RIENTRO = 12 < giorni_assenza <= 28
                         # B2B disattivato in modalità Playoff
                         BACK_TO_BACK = (giorni_assenza <= 1) if not st.session_state.is_playoff else False
 
@@ -771,8 +919,9 @@ if menu == "1. 🔍 Analisi Partita":
                         else:
                             peso_pts, peso_reb, peso_ast = 0.60, 0.20, 0.20 
 
+                        # Sostituisci il vecchio richiamo con questo:
                         bonus_perc_offesa, bonus_perc_difesa = evaluate_injury_bonus(
-                            compagni_per_bonus, avversari_per_difesa, POS, media_pts, STAGIONE, DEF_DATA, []
+                            compagni_per_bonus, avversari_per_difesa, POS, media_pts, STAGIONE, DEF_DATA, len(df_s), []
                         )
                         bonus_perc_offesa = min(bonus_perc_offesa, 0.25) 
                         bonus_perc_difesa = min(bonus_perc_difesa, 0.15) 
@@ -827,6 +976,14 @@ if menu == "1. 🔍 Analisi Partita":
                         dd_prob = calc_double_double_prob(res, stds)
                         td_prob = calc_triple_double_prob(res, stds)
 
+                        # --- NOVITÀ: Controllo Filtro Aprile per il singolo giocatore ---
+                        is_april = (datetime.now().month == 4)
+                        april_passed = True
+                        april_reason = ""
+                        
+                        if is_april and not st.session_state.is_playoff:
+                            april_passed, april_reason = check_april_load_management(p_id, PREV_STAGIONE)
+
                         st.session_state.proiezioni_giocatori[NOME] = {
                             "stats": {
                                 "PTS": res['PTS'], "REB": res['REB'], "AST": res['AST'],
@@ -840,7 +997,11 @@ if menu == "1. 🔍 Analisi Partita":
                             "td_prob": td_prob,
                             "best_play": best_play,
                             "opp": OPP_ABB,
-                            "timestamp": datetime.now().isoformat()
+                            "timestamp": datetime.now().isoformat(),
+                            "is_blowout_risk": is_blowout_risk,
+                            "blowout_margin": blowout_margin,
+                            "april_filtered": not april_passed,
+                            "april_reason": april_reason
                         }
 
                         salva_nel_database(st.session_state.proiezioni_giocatori)
@@ -890,6 +1051,21 @@ elif menu == "2. 📊 Valutatore Quote (EV)":
             ts_format = "N/D"
             
         st.caption(f"⚔️ **Matchup:** vs {opp} | ⏱️ **Ultimo calcolo:** {ts_format}")
+
+        # --- NOVITÀ: RENDERING DEI FILTRI DI SICUREZZA ---
+        is_blowout = st.session_state.proiezioni_giocatori[g_scelto].get("is_blowout_risk", False)
+        b_margin = st.session_state.proiezioni_giocatori[g_scelto].get("blowout_margin", 0.0)
+        is_april_filtered = st.session_state.proiezioni_giocatori[g_scelto].get("april_filtered", False)
+        a_reason = st.session_state.proiezioni_giocatori[g_scelto].get("april_reason", "")
+        
+        if is_april_filtered:
+            st.error(f"🛑 **SCARTATA - FILTRO APRILE:** {a_reason}. Questo giocatore è storicamente a rischio 'Load Management'. Evitare giocate alte.")
+        elif a_reason:
+            st.success(f"✅ **TEST APRILE SUPERATO:** {a_reason}")
+            
+        if is_blowout:
+            st.warning(f"⚠️ **ALLERTA RISCHIO BLOWOUT:** {b_margin}. Altissimo rischio di minuti tagliati nel 4° quarto (Garbage Time)!")
+        st.markdown("---")
         
         st.markdown("### 📊 Statline Proiettata")
         p_stats = st.session_state.proiezioni_giocatori[g_scelto]["stats"]
